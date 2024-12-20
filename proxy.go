@@ -56,6 +56,16 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			header: wr.Result().Header,
 			body:   wr.Body.Bytes(),
 		}
+
+		// Cache response
+		if r.code == http.StatusOK && (req.Method == http.MethodGet || req.Method == http.MethodHead || req.Method == http.MethodOptions) {
+			r.header.Set("Cache-Control", fmt.Sprintf("max-age=%d", int(p.ttl.Seconds())))
+			r.header.Set("Expires", time.Now().Add(p.ttl).Format(time.RFC1123))
+			r.header.Set("X-Cache-Date", r.header.Get("Date"))
+			r.header.Del("Date")
+			p.cache.Add(key, r)
+		}
+
 		return r, nil
 	})
 	if err != nil {
@@ -63,18 +73,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Cache response
-	r := resp.(response)
-	if r.code == http.StatusOK && (req.Method == http.MethodGet || req.Method == http.MethodHead || req.Method == http.MethodOptions) {
-
-		r.header.Set("Cache-Control", fmt.Sprintf("max-age=%d", int(p.ttl.Seconds())))
-		r.header.Set("Expires", time.Now().Add(p.ttl).Format(time.RFC1123))
-		r.header.Set("X-Cache-Date", r.header.Get("Date"))
-		r.header.Del("Date")
-
-		p.cache.Add(key, r)
-	}
-	writeResponse(w, r)
+	writeResponse(w, resp.(response))
 }
 
 func writeResponse(w http.ResponseWriter, r response) {
